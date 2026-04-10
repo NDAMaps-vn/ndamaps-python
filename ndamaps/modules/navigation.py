@@ -99,3 +99,38 @@ class NavigationModule:
                 query[key] = params[key]
 
         return self._http.get(MAPS_API_BASE, "/distancematrix", query)
+
+    def optimized_route(self, **params) -> Dict[str, Any]:
+        """Calculate an optimized multi-stop route.
+
+        Args:
+            locations: List of locations {"lat": ..., "lon": ...}
+            costing: Routing profile, default "auto"
+            directions_options: Additional routing options (e.g. {"units": "km"})
+            admin_v2: Return updated admin info
+
+        Returns:
+            {"trip": {"locations": [...], "legs": [...], "summary": {...}}}
+        """
+        locations = params.get("locations", [])
+        
+        json_body = {
+            "locations": [
+                {"lat": float(loc.get("lat", getattr(loc, "lat", 0))), 
+                 "lon": float(loc.get("lon", getattr(loc, "lon", 0)))}
+                if isinstance(loc, dict) else {"lat": float(loc.lat), "lon": float(loc.lon)} 
+                for loc in locations
+            ],
+            "costing": params.get("costing", "auto")
+        }
+
+        if "directions_options" in params and params["directions_options"]:
+            json_body["directions_options"] = params["directions_options"]
+
+        import json
+        query: Dict[str, Any] = {"json": json.dumps(json_body)}
+
+        if "admin_v2" in params and params["admin_v2"] is not None:
+            query["admin_v2"] = params["admin_v2"]
+
+        return self._http.get(MAPS_API_BASE, "/optimized-route", query)

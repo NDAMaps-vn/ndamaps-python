@@ -86,6 +86,21 @@ def test_distance_matrix(client: NDAMapsClient):
     assert len(res["sources_to_targets"][0]) == 2
     print("  [OK] distance matrix calculated")
 
+def test_optimized_route(client: NDAMapsClient):
+    res = client.navigation.optimized_route(
+        locations=[
+            {"lat": 21.03624, "lon": 105.77142},
+            {"lat": 21.03326, "lon": 105.78743},
+            {"lat": 21.00329, "lon": 105.81834},
+            {"lat": 21.02863, "lon": 105.85164},
+            {"lat": 21.03624, "lon": 105.77142}
+        ]
+    )
+    assert "trip" in res
+    assert len(res["trip"]["locations"]) == 5
+    assert res["trip"]["summary"]["time"] > 0
+    print(f"  [OK] optimized route calculated: {res['trip']['summary']['time']} seconds")
+
 def test_forcodes_roundtrip(client: NDAMapsClient):
     encoded = client.forcodes.encode(lat=20.990396, lng=105.868825, resolution=13)
     forcode = encoded["forcodes"]

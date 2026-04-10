@@ -156,6 +156,22 @@ class DistanceMatrixParams:
     shape_format: Optional[str] = None
 
 
+@dataclass
+class OptimizedRouteLocation:
+    """A location for optimized route."""
+    lat: Union[str, float]
+    lon: Union[str, float]
+
+
+@dataclass
+class OptimizedRouteParams:
+    """Optimized route parameters."""
+    locations: List[OptimizedRouteLocation]
+    costing: Optional[str] = None
+    directions_options: Optional[Dict[str, Any]] = None
+    admin_v2: Optional[bool] = None
+
+
 # ── Static Map Params ─────────────────────────
 
 @dataclass
