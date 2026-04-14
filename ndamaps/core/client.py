@@ -18,7 +18,7 @@ from .errors import (
 # ── Base URLs ─────────────────────────────────
 
 MAPS_API_BASE = "https://mapapis.ndamaps.vn/v1"
-TILES_BASE = "https://maptiles.ndamaps.vn"
+TILES_BASE = "https://nda-tiles.openmap.vn"
 NDAVIEW_API_BASE = "https://api-view.ndamaps.vn/v1"
 
 T = TypeVar("T")

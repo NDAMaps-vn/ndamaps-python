@@ -91,8 +91,11 @@ class NDAMapsClient:
         self.close()
 
 
+from .async_client import AsyncNDAMapsClient
+
 __all__ = [
     "NDAMapsClient",
+    "AsyncNDAMapsClient",
     "NDAMapsError",
     "NDAMapsErrorCode",
     "MAP_TILE_STYLES",

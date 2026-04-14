@@ -1,0 +1,1550 @@
+openapi: 3.0.3
+
+info:
+  title: NDAMaps API
+  version: 1.0.0
+  description: |
+    Vietnam's national digital map platform API.
+    Includes Places, Geocoding, Navigation, Static Map, NDAView, and Forcodes.
+  contact:
+    email: support@ndamaps.vn
+    url: https://docs.ndamaps.vn
+  license:
+    name: Proprietary
+    url: https://ndamaps.vn
+
+servers:
+  - url: https://mapapis.ndamaps.vn/v1
+    description: Maps API (Places, Geocoding, Navigation, Forcodes)
+  - url: https://nda-tiles.openmap.vn
+    description: Tile server (Static Map)
+  - url: https://api-view.ndamaps.vn/v1
+    description: NDAView API (Street-level imagery)
+
+security:
+  - ApiKeyQuery: []
+
+tags:
+  - name: Places
+    description: Place search, autocomplete, detail, children, nearby
+  - name: Geocoding
+    description: Forward and reverse geocoding
+  - name: Navigation
+    description: Routing, distance matrix, optimized route
+  - name: Maps
+    description: Static map image generation
+  - name: NDAView
+    description: Street-level 360° imagery
+  - name: Forcodes
+    description: Encode/decode geographic coordinates to Forcode strings
+
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+paths:
+
+  # ── AUTOCOMPLETE ──────────────────────────
+  /autocomplete:
+    get:
+      tags: [Places]
+      operationId: autocomplete
+      summary: Autocomplete place search
+      description: |
+        Real-time type-ahead suggestions as the user types.
+        Supports both Google format (input) and OSM format (text).
+        Use sessiontoken (UUID v4) to group requests for billing optimization.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        # Google format
+        - name: input
+          in: query
+          description: Search keyword (Google format)
+          schema:
+            type: string
+          example: "Công ty TNHH Công Nghệ 44+"
+        - name: location
+          in: query
+          description: "Location bias as lat,lng (Google format)"
+          schema:
+            type: string
+          example: "21.03279,105.78788"
+        - name: origin
+          in: query
+          description: "Origin point for distance_meters calculation as lat,lng"
+          schema:
+            type: string
+          example: "21.03279,105.78788"
+        - name: radius
+          in: query
+          description: Search radius in km (Google format)
+          schema:
+            type: number
+            default: 50
+          example: 10
+        # OSM format
+        - name: text
+          in: query
+          description: Search keyword (OSM format)
+          schema:
+            type: string
+          example: "Công ty TNHH Công Nghệ 44+"
+        - name: boundary.circle.lat
+          in: query
+          description: Latitude for search boundary (OSM format)
+          schema:
+            type: number
+          example: 21.03279
+        - name: boundary.circle.lon
+          in: query
+          description: Longitude for search boundary (OSM format)
+          schema:
+            type: number
+          example: 105.78788
+        - name: boundary.circle.radius
+          in: query
+          description: Radius in km (OSM format)
+          schema:
+            type: number
+            default: 50
+        - name: size
+          in: query
+          description: Number of results to return
+          schema:
+            type: integer
+            default: 5
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Autocomplete results
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/AutocompleteGoogleResponse'
+                  - $ref: '#/components/schemas/AutocompleteOsmResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── PLACE DETAIL ──────────────────────────
+  /place:
+    get:
+      tags: [Places]
+      operationId: getPlaceDetail
+      summary: Get place detail by ID
+      description: |
+        Retrieve full details of a place using its place_id.
+        Use the same sessiontoken from Autocomplete to avoid double billing.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: ids
+          in: query
+          required: true
+          description: Place ID string
+          schema:
+            type: string
+          example: "aQA0KHmLGXVtbpFgpMqFfA0OjpRAAVFgTGaOYDTSgKXVbpiV-A6xZXkuPZgc"
+        - name: format
+          in: query
+          description: Response format
+          schema:
+            type: string
+            enum: [google, osm]
+            default: osm
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Place detail
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PlaceDetailGoogleResponse'
+                  - $ref: '#/components/schemas/PlaceDetailOsmResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── CHILDREN ──────────────────────────────
+  /place/children:
+    get:
+      tags: [Places]
+      operationId: getPlaceChildren
+      summary: Get child places of a location
+      description: Returns child points of a place (e.g. gates inside a bus station). Only applicable when has_child is true.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: parent_id
+          in: query
+          required: true
+          description: ID of the parent place
+          schema:
+            type: string
+          example: "sCCOPkcjbElM1xGeOCRaRky9L5bScJS1zSRyONLIpaE9PeES0txFeGDhFD0g"
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Child places
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutocompleteGoogleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── NEARBY ────────────────────────────────
+  /nearby:
+    get:
+      tags: [Places]
+      operationId: searchNearby
+      summary: Search for nearby places
+      description: Find places of a given category around a coordinate.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: categories
+          in: query
+          required: true
+          description: Place category filter
+          schema:
+            type: string
+          example: "restaurant"
+        - name: point.lat
+          in: query
+          description: Center latitude
+          schema:
+            type: number
+          example: 21.0265361
+        - name: point.lon
+          in: query
+          description: Center longitude
+          schema:
+            type: number
+          example: 105.852484
+        - name: size
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 5
+        - name: boundary.circle.radius
+          in: query
+          description: Search radius in km
+          schema:
+            type: integer
+            default: 5
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Nearby places (GeoJSON FeatureCollection)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeatureCollection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── FORWARD GEOCODE ───────────────────────
+  /geocode/forward:
+    get:
+      tags: [Geocoding]
+      operationId: forwardGeocode
+      summary: Forward geocoding
+      description: |
+        Convert an address or place name to coordinates.
+        Google format: use `address` param → returns Google-style response.
+        OSM format: use `text` param → returns GeoJSON FeatureCollection.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: address
+          in: query
+          description: Address string (Google format)
+          schema:
+            type: string
+          example: "12 Ngõ 1 Dịch Vọng Hậu, Cầu Giấy, Hà Nội"
+        - name: text
+          in: query
+          description: Address string (OSM format)
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Number of results (OSM format only)
+          schema:
+            type: integer
+            default: 1
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Geocoding results
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/GeocodeGoogleResponse'
+                  - $ref: '#/components/schemas/FeatureCollection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── REVERSE GEOCODE ───────────────────────
+  /geocode/reverse:
+    get:
+      tags: [Geocoding]
+      operationId: reverseGeocode
+      summary: Reverse geocoding
+      description: |
+        Convert coordinates to address/place name.
+        Google format: use `latlng` param.
+        OSM format: use `point.lat` + `point.lon`.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: latlng
+          in: query
+          description: "Coordinates as lat,lng (Google format)"
+          schema:
+            type: string
+          example: "21.075951,105.812662"
+        - name: point.lat
+          in: query
+          description: Latitude (OSM format)
+          schema:
+            type: number
+          example: 21.075951
+        - name: point.lon
+          in: query
+          description: Longitude (OSM format)
+          schema:
+            type: number
+          example: 105.812662
+        - name: boundary.circle.radius
+          in: query
+          description: Search radius in km (OSM format)
+          schema:
+            type: number
+            default: 1
+        - name: size
+          in: query
+          description: Number of results (OSM format)
+          schema:
+            type: integer
+            default: 1
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Reverse geocoding results
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ReverseGeocodeGoogleResponse'
+                  - $ref: '#/components/schemas/FeatureCollection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── ROUTING ───────────────────────────────
+  /direction:
+    get:
+      tags: [Navigation]
+      operationId: getDirections
+      summary: Turn-by-turn routing
+      description: Get directions between two or more points. Supports car, bike, motor, taxi, truck, walking.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: origin
+          in: query
+          required: true
+          description: "Origin coordinate as lat,lng"
+          schema:
+            type: string
+          example: "10.78746,106.69855"
+        - name: destination
+          in: query
+          required: true
+          description: "Destination coordinate(s) as lat,lng. Separate multiple with ;"
+          schema:
+            type: string
+          example: "10.79135,106.70238"
+        - name: vehicle
+          in: query
+          description: Vehicle type
+          schema:
+            type: string
+            enum: [car, bike, motor, taxi, truck, walking]
+            default: car
+        - name: alternatives
+          in: query
+          description: Return alternative routes
+          schema:
+            type: boolean
+            default: false
+        - name: language
+          in: query
+          description: Language for route instructions
+          schema:
+            type: string
+            enum: [en, vi]
+            default: vi
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Route results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirectionsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── DISTANCE MATRIX ───────────────────────
+  /distancematrix:
+    get:
+      tags: [Navigation]
+      operationId: getDistanceMatrix
+      summary: Distance matrix (time + distance)
+      description: Compute time and distance between multiple sources and targets.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: json
+          in: query
+          required: true
+          description: JSON body with sources, targets, and options
+          schema:
+            type: string
+            example: '{"sources":[{"lat":"21.03","lon":"105.79"}],"targets":[{"lat":"21.05","lon":"105.79"}]}'
+        - name: id
+          in: query
+          description: Optional request identifier
+          schema:
+            type: string
+        - name: verbose
+          in: query
+          description: If true, returns flat list with explicit source/target indices
+          schema:
+            type: boolean
+            default: true
+        - name: shape_format
+          in: query
+          description: Shape format for path geometry
+          schema:
+            type: string
+            enum: [polyline6, polyline5, geojson, no_shape]
+            default: no_shape
+      responses:
+        '200':
+          description: Distance matrix result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistanceMatrixResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── OPTIMIZED ROUTE ──────────────────────
+  /optimized-route:
+    get:
+      tags: [Navigation]
+      operationId: getOptimizedRoute
+      summary: Optimized multi-stop route
+      description: |
+        Returns an optimized route visiting each location exactly once.
+        Always starts at the first location and ends at the last location.
+        Intermediate stops are reordered for optimal travel time/distance.
+        Useful for delivery routes, sightseeing tours, field operations.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: json
+          in: query
+          required: true
+          description: |
+            JSON object with locations, costing model, and options.
+            `locations`: array of {lat, lon} objects (minimum 3 — start, at least 1 stop, end).
+            First and last location are fixed; intermediate stops are reordered.
+          schema:
+            type: string
+          example: |
+            {
+              "locations": [
+                {"lat": 21.03624, "lon": 105.77142},
+                {"lat": 21.03326, "lon": 105.78743},
+                {"lat": 21.00329, "lon": 105.81834},
+                {"lat": 21.02863, "lon": 105.85164},
+                {"lat": 21.07517, "lon": 105.81098},
+                {"lat": 21.03624, "lon": 105.77142}
+              ],
+              "costing": "auto",
+              "directions_options": {"units": "km"}
+            }
+        - $ref: '#/components/parameters/AdminV2'
+      responses:
+        '200':
+          description: Optimized route result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizedRouteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── STATIC MAP ────────────────────────────
+  /styles/{styleId}/static/{center}/{size}.{format}:
+    get:
+      tags: [Maps]
+      operationId: getStaticMapCenter
+      summary: Static map image (center-based)
+      description: Generate a static map image centered on a coordinate.
+      servers:
+        - url: https://nda-tiles.openmap.vn
+      parameters:
+        - name: styleId
+          in: path
+          required: true
+          schema:
+            type: string
+            default: ndamap
+          example: "ndamap"
+        - name: center
+          in: path
+          required: true
+          description: "lon,lat,zoom[@bearing[,pitch]]"
+          schema:
+            type: string
+          example: "105.78792,21.03284,20"
+        - name: size
+          in: path
+          required: true
+          description: "WxH[@2x]"
+          schema:
+            type: string
+          example: "600x400@2x"
+        - name: format
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [png, jpg, webp]
+          example: "png"
+        - name: marker
+          in: query
+          description: "Marker as lng,lat|iconUrl[|option:value...]"
+          schema:
+            type: string
+        - name: path
+          in: query
+          description: Path as comma-separated lng,lat pairs or encoded polyline (enc:...)
+          schema:
+            type: string
+        - name: padding
+          in: query
+          description: Padding fraction (e.g. 0.1 = 10%)
+          schema:
+            type: number
+        - $ref: '#/components/parameters/ApiKey'
+      responses:
+        '200':
+          description: PNG/JPG/WebP map image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── NDAVIEW STATIC ────────────────────────
+  /items/static/thumbnail.jpeg:
+    get:
+      tags: [NDAView]
+      operationId: getNdaViewStatic
+      summary: Street-level static thumbnail
+      description: Get a static street-level image for a location by ID or coordinates.
+      servers:
+        - url: https://api-view.ndamaps.vn/v1
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: id
+          in: query
+          description: NDAView item UUID
+          schema:
+            type: string
+            format: uuid
+          example: "e213daed-3ae2-4259-940b-444a4056c101"
+        - name: place_position
+          in: query
+          description: "Coordinates as lon,lat"
+          schema:
+            type: string
+          example: "105.788024983,21.032796623"
+        - name: yaw
+          in: query
+          description: Rotation angle in degrees (0-360)
+          schema:
+            type: number
+            default: 0
+          example: 276
+        - name: pitch
+          in: query
+          description: Tilt angle in degrees
+          schema:
+            type: number
+            default: 0
+          example: 20
+      responses:
+        '200':
+          description: JPEG street-level image
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── NDAVIEW DYNAMIC ───────────────────────
+  /search:
+    get:
+      tags: [NDAView]
+      operationId: searchNdaView
+      summary: Search street-level imagery
+      description: Search for 360° street images by location, bounding box, datetime, or IDs.
+      servers:
+        - url: https://api-view.ndamaps.vn/v1
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: place_position
+          in: query
+          description: "Center coordinates as lon,lat"
+          schema:
+            type: string
+          example: "105.788024983,21.032796623"
+        - name: place_distance
+          in: query
+          description: Distance range in meters (e.g. "3-15")
+          schema:
+            type: string
+            default: "3-15"
+        - name: place_fov_tolerance
+          in: query
+          description: Field of view tolerance in degrees (2-180)
+          schema:
+            type: integer
+            default: 30
+        - name: bbox
+          in: query
+          description: "Bounding box as minLon,minLat,maxLon,maxLat"
+          schema:
+            type: string
+        - name: datetime
+          in: query
+          description: "RFC 3339 datetime or interval (e.g. 2024-01-01T00:00:00Z/2024-12-31T23:59:59Z)"
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of results (1-10000)
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 10000
+        - name: ids
+          in: query
+          description: Comma-separated item UUIDs
+          schema:
+            type: string
+        - name: collections
+          in: query
+          description: Comma-separated collection UUIDs
+          schema:
+            type: string
+      responses:
+        '200':
+          description: NDAView imagery search results (STAC FeatureCollection)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NdaViewFeatureCollection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── FORCODES ENCODE ───────────────────────
+  /forcodes/encode:
+    post:
+      tags: [Forcodes]
+      operationId: encodeForcode
+      summary: Encode coordinates to Forcode
+      description: Convert lat/lng to a compact Forcode string with Vietnamese admin code prefix.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: lat
+          in: query
+          required: true
+          description: Latitude in decimal degrees
+          schema:
+            type: number
+          example: 20.990396
+        - name: lng
+          in: query
+          required: true
+          description: Longitude in decimal degrees
+          schema:
+            type: number
+          example: 105.868825
+        - name: resolution
+          in: query
+          description: Hexagon resolution level (0-15). Default 13 ≈ 3.5m precision.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 15
+            default: 13
+      responses:
+        '200':
+          description: Forcode encode result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForcodeEncodeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ── FORCODES DECODE ───────────────────────
+  /forcodes/decode:
+    post:
+      tags: [Forcodes]
+      operationId: decodeForcode
+      summary: Decode Forcode to coordinates
+      description: Convert a Forcode string back to lat/lng coordinates.
+      parameters:
+        - $ref: '#/components/parameters/ApiKey'
+        - name: forcodes
+          in: query
+          required: true
+          description: Forcode string to decode
+          schema:
+            type: string
+          example: "HN4TZUZBPKRN0F"
+      responses:
+        '200':
+          description: Forcode decode result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForcodeDecodeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+# ─────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: apikey
+
+  parameters:
+    ApiKey:
+      name: apikey
+      in: query
+      required: true
+      description: Your NDAMaps API key
+      schema:
+        type: string
+      example: "YOUR_API_KEY"
+
+    SessionToken:
+      name: sessiontoken
+      in: query
+      description: UUID v4 session token for billing optimization (Autocomplete + Place Detail)
+      schema:
+        type: string
+        format: uuid
+      example: "576e6543-fbc8-422c-9aad-9884c97df128"
+
+    AdminV2:
+      name: admin_v2
+      in: query
+      description: Return updated administrative info after 2025 province boundary consolidation
+      schema:
+        type: boolean
+        default: false
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ERROR"
+        message:
+          type: string
+          example: "Invalid API key"
+
+    # ── Shared ────────────────────────────
+    LatLng:
+      type: object
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+
+    AddressComponent:
+      type: object
+      properties:
+        long_name:
+          type: string
+        short_name:
+          type: string
+
+    PlaceProperties:
+      type: object
+      properties:
+        name:
+          type: string
+        housenumber:
+          type: string
+          nullable: true
+        street:
+          type: string
+          nullable: true
+        short_address:
+          type: string
+          nullable: true
+        postalcode:
+          type: string
+          nullable: true
+        label:
+          type: string
+        country:
+          type: string
+        country_code:
+          type: string
+        category:
+          type: array
+          items:
+            type: string
+        website:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        opening_hours:
+          nullable: true
+        region:
+          type: string
+        county:
+          type: string
+        locality:
+          type: string
+        distance:
+          type: number
+          nullable: true
+        id:
+          type: string
+        continent:
+          type: string
+        source:
+          type: string
+        has_child:
+          type: boolean
+          description: If true, use /place/children to get sub-locations
+
+    GeoJsonPoint:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [Point]
+        coordinates:
+          type: array
+          items:
+            type: number
+          minItems: 2
+          maxItems: 2
+          description: "[longitude, latitude]"
+
+    Feature:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [Feature]
+        geometry:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        properties:
+          $ref: '#/components/schemas/PlaceProperties'
+
+    FeatureCollection:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [FeatureCollection]
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/Feature'
+        bbox:
+          type: array
+          items:
+            type: number
+        errors:
+          nullable: true
+
+    # ── Autocomplete ──────────────────────
+    AutocompletePrediction:
+      type: object
+      properties:
+        description:
+          type: string
+        place_id:
+          type: string
+        matched_substrings:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              length:
+                type: integer
+              offset:
+                type: integer
+        structured_formatting:
+          type: object
+          properties:
+            main_text:
+              type: string
+            secondary_text:
+              type: string
+        terms:
+          type: array
+          items:
+            type: object
+            properties:
+              offset:
+                type: integer
+              value:
+                type: string
+        types:
+          type: array
+          items:
+            type: string
+        distance_meters:
+          type: number
+          nullable: true
+        has_child:
+          type: boolean
+
+    AutocompleteGoogleResponse:
+      type: object
+      properties:
+        predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutocompletePrediction'
+        status:
+          type: string
+          enum: [OK, ZERO_RESULTS, INVALID_REQUEST]
+
+    AutocompleteOsmResponse:
+      $ref: '#/components/schemas/FeatureCollection'
+
+    # ── Place Detail ──────────────────────
+    PlaceDetailResult:
+      type: object
+      properties:
+        place_id:
+          type: string
+        formatted_address:
+          type: string
+        geometry:
+          type: object
+          properties:
+            location:
+              $ref: '#/components/schemas/LatLng'
+            viewport:
+              nullable: true
+        address_components:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddressComponent'
+        name:
+          type: string
+        url:
+          type: string
+        types:
+          type: array
+          items:
+            type: string
+
+    PlaceDetailGoogleResponse:
+      type: object
+      properties:
+        result:
+          $ref: '#/components/schemas/PlaceDetailResult'
+        status:
+          type: string
+          enum: [OK, NOT_FOUND, INVALID_REQUEST]
+
+    PlaceDetailOsmResponse:
+      $ref: '#/components/schemas/FeatureCollection'
+
+    # ── Geocoding ─────────────────────────
+    GeocodeResult:
+      type: object
+      properties:
+        address:
+          type: string
+        address_components:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddressComponent'
+        formatted_address:
+          type: string
+        geometry:
+          type: object
+          properties:
+            location:
+              $ref: '#/components/schemas/LatLng'
+        name:
+          type: string
+        place_id:
+          type: string
+        types:
+          type: array
+          items:
+            type: string
+
+    GeocodeGoogleResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeocodeResult'
+        status:
+          type: string
+          enum: [OK, ZERO_RESULTS, INVALID_REQUEST]
+
+    ReverseGeocodeGoogleResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeocodeResult'
+        status:
+          type: string
+          enum: [OK, ZERO_RESULTS, INVALID_REQUEST]
+
+    # ── Navigation ────────────────────────
+    RouteStep:
+      type: object
+      properties:
+        distance:
+          $ref: '#/components/schemas/TextValue'
+        duration:
+          $ref: '#/components/schemas/TextValue'
+        start_location:
+          $ref: '#/components/schemas/LatLng'
+        end_location:
+          $ref: '#/components/schemas/LatLng'
+        html_instructions:
+          type: string
+        maneuver:
+          type: string
+        polyline:
+          type: object
+          properties:
+            points:
+              type: string
+        travel_mode:
+          type: string
+
+    RouteLeg:
+      type: object
+      properties:
+        distance:
+          $ref: '#/components/schemas/TextValue'
+        duration:
+          $ref: '#/components/schemas/TextValue'
+        start_address:
+          type: string
+        end_address:
+          type: string
+        start_location:
+          $ref: '#/components/schemas/LatLng'
+        end_location:
+          $ref: '#/components/schemas/LatLng'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/RouteStep'
+
+    Route:
+      type: object
+      properties:
+        bounds:
+          type: object
+        legs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RouteLeg'
+        overview_polyline:
+          type: object
+          properties:
+            points:
+              type: string
+        summary:
+          type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        waypoint_order:
+          type: array
+          items:
+            type: integer
+
+    DirectionsResponse:
+      type: object
+      properties:
+        geocoded_waypoints:
+          type: array
+          items:
+            type: object
+            properties:
+              geocoder_status:
+                type: string
+              place_id:
+                type: string
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Route'
+
+    TextValue:
+      type: object
+      properties:
+        text:
+          type: string
+        value:
+          type: number
+
+    DistanceMatrixEntry:
+      type: object
+      properties:
+        distance:
+          type: number
+        time:
+          type: integer
+        from_index:
+          type: integer
+        to_index:
+          type: integer
+        date_time:
+          type: string
+          nullable: true
+
+    DistanceMatrixResponse:
+      type: object
+      properties:
+        sources_to_targets:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/DistanceMatrixEntry'
+        locations:
+          type: array
+          items:
+            type: object
+            properties:
+              lat:
+                type: string
+              lon:
+                type: string
+        units:
+          type: string
+          enum: [km, mi]
+          default: km
+        warnings:
+          type: array
+          items:
+            type: string
+
+    # ── NDAView ───────────────────────────
+    NdaViewAssets:
+      type: object
+      properties:
+        hd:
+          $ref: '#/components/schemas/NdaViewAsset'
+        sd:
+          $ref: '#/components/schemas/NdaViewAsset'
+        thumb:
+          $ref: '#/components/schemas/NdaViewAsset'
+
+    NdaViewAsset:
+      type: object
+      properties:
+        href:
+          type: string
+          format: uri
+        title:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+
+    NdaViewFeature:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [Feature]
+        geometry:
+          $ref: '#/components/schemas/GeoJsonPoint'
+        bbox:
+          type: array
+          items:
+            type: number
+        assets:
+          $ref: '#/components/schemas/NdaViewAssets'
+        asset_templates:
+          type: object
+        links:
+          type: array
+          items:
+            type: object
+        properties:
+          type: object
+          properties:
+            datetime:
+              type: string
+              format: date-time
+            created:
+              type: string
+              format: date-time
+            width:
+              type: integer
+            height:
+              type: integer
+            view:azimuth:
+              type: number
+            ndaview_vn:status:
+              type: string
+            ndaview_vn:thumbnail:
+              type: string
+              format: uri
+            ndaview_vn:image:
+              type: string
+              format: uri
+            pers:interior_orientation:
+              type: object
+              properties:
+                field_of_view:
+                  type: integer
+                camera_manufacturer:
+                  type: string
+                camera_model:
+                  type: string
+
+    NdaViewFeatureCollection:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [FeatureCollection]
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/NdaViewFeature'
+        links:
+          type: array
+          items:
+            type: object
+
+    # ── Optimized Route ───────────────────
+    OptimizedRouteLocation:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [break]
+        lat:
+          type: number
+        lon:
+          type: number
+        side_of_street:
+          type: string
+          enum: [left, right]
+        original_index:
+          type: integer
+          description: Index of this location in the original input array (before reordering)
+
+    OptimizedRouteLegSummary:
+      type: object
+      properties:
+        time:
+          type: number
+          description: Total travel time for this leg in seconds
+        length:
+          type: number
+          description: Total distance for this leg in km (or miles if units=mi)
+        cost:
+          type: number
+        has_time_restrictions:
+          type: boolean
+        has_toll:
+          type: boolean
+        has_highway:
+          type: boolean
+        has_ferry:
+          type: boolean
+        min_lat:
+          type: number
+        min_lon:
+          type: number
+        max_lat:
+          type: number
+        max_lon:
+          type: number
+
+    OptimizedRouteManeuver:
+      type: object
+      properties:
+        type:
+          type: integer
+          description: Maneuver type code (3=start, 5=dest-right, 6=dest-left, 10=right, 15=left, etc.)
+        instruction:
+          type: string
+        verbal_pre_transition_instruction:
+          type: string
+        verbal_succinct_transition_instruction:
+          type: string
+          nullable: true
+        verbal_post_transition_instruction:
+          type: string
+          nullable: true
+        verbal_transition_alert_instruction:
+          type: string
+          nullable: true
+        street_names:
+          type: array
+          items:
+            type: string
+        time:
+          type: number
+          description: Duration of this maneuver in seconds
+        length:
+          type: number
+          description: Distance of this maneuver in km
+        cost:
+          type: number
+        begin_shape_index:
+          type: integer
+        end_shape_index:
+          type: integer
+        travel_mode:
+          type: string
+          example: "drive"
+        travel_type:
+          type: string
+          example: "car"
+        highway:
+          type: boolean
+          nullable: true
+        verbal_multi_cue:
+          type: boolean
+          nullable: true
+        roundabout_exit_count:
+          type: integer
+          nullable: true
+        sign:
+          type: object
+          nullable: true
+          properties:
+            exit_number_elements:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+            exit_branch_elements:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+            exit_toward_elements:
+              type: array
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+
+    OptimizedRouteLeg:
+      type: object
+      properties:
+        maneuvers:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptimizedRouteManeuver'
+        summary:
+          $ref: '#/components/schemas/OptimizedRouteLegSummary'
+        shape:
+          type: string
+          description: Encoded polyline (Google Polyline format) for this leg
+
+    OptimizedRouteSummary:
+      type: object
+      properties:
+        time:
+          type: number
+          description: Total trip time in seconds
+        length:
+          type: number
+          description: Total trip distance in km
+        cost:
+          type: number
+        has_time_restrictions:
+          type: boolean
+        has_toll:
+          type: boolean
+        has_highway:
+          type: boolean
+        has_ferry:
+          type: boolean
+        min_lat:
+          type: number
+        min_lon:
+          type: number
+        max_lat:
+          type: number
+        max_lon:
+          type: number
+        status_message:
+          type: string
+          example: "Found route between points"
+        status:
+          type: integer
+          description: 0 = success
+        units:
+          type: string
+          example: "kilometers"
+        language:
+          type: string
+          example: "en-US"
+
+    OptimizedRouteResponse:
+      type: object
+      properties:
+        trip:
+          type: object
+          properties:
+            locations:
+              type: array
+              description: Locations in optimized visit order (original_index maps back to input)
+              items:
+                $ref: '#/components/schemas/OptimizedRouteLocation'
+            legs:
+              type: array
+              description: One leg per pair of consecutive locations in the optimized order
+              items:
+                $ref: '#/components/schemas/OptimizedRouteLeg'
+            summary:
+              $ref: '#/components/schemas/OptimizedRouteSummary'
+
+    # ── Forcodes ──────────────────────────
+    ForcodeEncodeResponse:
+      type: object
+      properties:
+        forcodes:
+          type: string
+          description: Generated Forcode string
+          example: "HN4TZUZBPKRN0F"
+        lat:
+          type: number
+          example: 20.990396
+        lng:
+          type: number
+          example: 105.868825
+        resolution:
+          type: integer
+          example: 13
+        admin_code:
+          type: string
+          description: Vietnamese province/city code
+          example: "HN"
+        status:
+          type: string
+          enum: [OK]
+
+    ForcodeDecodeResponse:
+      type: object
+      properties:
+        forcodes:
+          type: string
+          example: "HN4TZUZBPKRN0F"
+        lat:
+          type: number
+          nullable: true
+          example: 20.990396
+        lng:
+          type: number
+          nullable: true
+          example: 105.868825
+        resolution:
+          type: integer
+          nullable: true
+          example: 13
+        status:
+          type: string
+          enum: [OK, INVALID_FORCODES]

@@ -23,11 +23,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests httpx pytest
-        
-    # Requirements for integration tests
-    # - name: Test with pytest
-    #   env:
-    #     NDAMAPS_API_KEY: ${{ secrets.NDAMAPS_API_KEY }}
-    #   run: |
-    #     pytest tests/
+        pip install -e ".[dev]"
+
+    - name: Run unit tests
+      run: pytest tests/unit/ -v
+
